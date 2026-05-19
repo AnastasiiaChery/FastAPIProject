@@ -1,0 +1,16 @@
+# devflow project configuration
+# Commit this file — it defines how devflow behaves in this repo
+
+jira:
+  project: SCRUM                          # Jira project key
+  server: https://zamorenanastya.atlassian.net
+
+github:
+  default_branch: main                    # base branch for PRs
+  draft_pr: true                          # open PRs as draft
+
+code:
+  language: python                        # python | typescript | go
+  test_framework: pytest                  # pytest | unittest | jest
+  test_dir: tests/                        # where tests live
+  src_dir: .                              # where source code lives

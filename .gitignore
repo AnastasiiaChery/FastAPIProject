@@ -1,0 +1,10 @@
+.worktrees/
+.venv/
+.idea/
+docs/plans/
+__pycache__/
+*.pyc
+*.pyo
+.env
+pr_output.json
+pr_output.md
