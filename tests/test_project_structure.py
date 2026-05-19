@@ -1,14 +1,17 @@
-import pathlib
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def test_main_py_removed():
-    assert not pathlib.Path("main.py").exists()
+    assert not (PROJECT_ROOT / "main.py").exists()
 
 
 def test_setup_py_removed():
-    assert not pathlib.Path("setup.py").exists()
+    assert not (PROJECT_ROOT / "setup.py").exists()
 
 
 def test_pyproject_has_no_anthropic():
-    content = pathlib.Path("pyproject.toml").read_text()
-    assert "anthropic" not in content
+    pyproject = PROJECT_ROOT / "pyproject.toml"
+    assert pyproject.exists(), "pyproject.toml not found"
+    assert "anthropic" not in pyproject.read_text()
