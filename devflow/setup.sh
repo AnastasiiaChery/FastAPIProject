@@ -73,7 +73,35 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   confirm "Continue anyway?" || exit 1
 fi
 
-# ── STEP 2: GitHub ─────────────────────────────────────
+# ── STEP 2: Claude Code plugins ────────────────────────
+step "Step 2 — Claude Code plugins"
+echo ""
+
+PLUGINS=(
+  "superpowers@superpowers-marketplace"
+  "commit-commands@claude-plugins-official"
+  "code-review@claude-plugins-official"
+  "frontend-design@claude-plugins-official"
+)
+
+if ! command -v claude &>/dev/null; then
+  warn "claude not found — skipping plugin installation"
+else
+  for plugin in "${PLUGINS[@]}"; do
+    if claude plugin list 2>/dev/null | grep -q "${plugin%%@*}"; then
+      ok "$plugin  already installed"
+    else
+      echo "  Installing $plugin..."
+      if claude plugin install "$plugin" --yes 2>/dev/null; then
+        ok "$plugin"
+      else
+        warn "$plugin — install failed, do it manually: claude plugin install $plugin"
+      fi
+    fi
+  done
+fi
+
+# ── STEP 3: GitHub ─────────────────────────────────────
 step "Step 2 — GitHub authentication"
 echo ""
 
@@ -105,8 +133,8 @@ if gh auth status &>/dev/null; then
   gh auth setup-git 2>/dev/null && ok "Git credentials configured via gh"
 fi
 
-# ── STEP 3: Jira ───────────────────────────────────────
-step "Step 3 — Jira configuration"
+# ── STEP 4: Jira ───────────────────────────────────────
+step "Step 4 — Jira configuration"
 echo ""
 
 JIRA_CONFIG="$HOME/.config/.jira/.config.yml"
