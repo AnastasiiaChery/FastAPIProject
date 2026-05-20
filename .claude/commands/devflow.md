@@ -13,9 +13,26 @@ Work through the following phases in order. Do not stop or ask for confirmation 
 
 ---
 
+## PHASE 0 — Load Project Config
+
+Read `devflow/config.yml` and extract:
+- `jira.project` — to validate the ticket prefix
+- `github.default_branch` — base branch for PRs and worktrees
+- `code.language` — to follow the right conventions
+- `code.test_framework` — the test command to use throughout
+- `code.test_dir` and `code.src_dir` — where tests and source live
+
+Use these values in all subsequent phases instead of hardcoded defaults.
+
+---
+
 ## PHASE 1 — Fetch & Analyze the Jira Ticket
 
-Use the `jira` skill to fetch ticket $ARGUMENTS.
+Fetch the ticket using the jira CLI:
+
+```bash
+jira issue view $ARGUMENTS
+```
 
 Extract and summarize:
 - Title and description
@@ -31,7 +48,7 @@ If the ticket cannot be found, stop immediately and print a clear error.
 After fetching the ticket, inspect all linked tickets (blockers, "depends on", "is blocked by").
 
 For each linked ticket that is a **blocker**:
-1. Fetch its status via the `jira` skill
+1. Fetch its status via the jira CLI: `jira issue view <TICKET-ID>`
 2. If status is not `Done` / `Closed` — print a warning:
 
 ```
@@ -71,18 +88,16 @@ Skipping phases: <list or "none">
 
 ## PHASE 2 — Create Plan
 
-Use the `superpowers:writing-plans` skill to create a plan appropriate for the mode:
-
-- **Story/Feature**: full implementation plan (files, data flow, edge cases, test strategy)
-- **Bug**: root cause analysis — trace the actual cause, not just the symptom; document why the bug exists, not just where
-- **Task**: brief description of what will change and why
-- **Spike/Investigation**: → see Phase 2a below
-
-A good plan answers:
+Create a markdown plan appropriate for the mode. A good plan answers:
 1. What exactly will change (files, interfaces, data shapes)?
 2. Why this approach over alternatives?
 3. What can go wrong and how is it handled?
 4. What is explicitly out of scope?
+
+- **Story/Feature**: full implementation plan — files to change, data flow, edge cases, test strategy
+- **Bug**: root cause analysis — trace the actual cause, not just the symptom; document why the bug exists, not just where
+- **Task**: brief description of what will change and why
+- **Spike/Investigation**: → see Phase 2a below
 
 Save to: `docs/plans/YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format).
 
@@ -132,11 +147,18 @@ After creating the file, continue directly to Phase 7 (commit + PR).
 
 > ⚪ **Skip for Spike/Investigation tickets.**
 
-Use the `superpowers:using-git-worktrees` skill to create an isolated workspace.
+Create a git worktree for isolated development:
 
-Branch name: `feature/$ARGUMENTS-<short-slug>` where slug is a 2-3 word kebab-case summary of the ticket title.
+```bash
+# Derive repo name and branch slug automatically
+REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+BRANCH="feature/$ARGUMENTS-<2-3 word kebab-case summary of ticket title>"
+BASE_BRANCH=<github.default_branch from config>
 
-All implementation work happens on this branch.
+git worktree add -b "$BRANCH" "../${REPO_NAME}-$ARGUMENTS" "$BASE_BRANCH"
+```
+
+All implementation work happens inside `../${REPO_NAME}-$ARGUMENTS`. Do not work on `$BASE_BRANCH`.
 
 ---
 
@@ -144,22 +166,23 @@ All implementation work happens on this branch.
 
 > ⚪ **Skip for Spike/Investigation tickets.**
 
-Use the `superpowers:subagent-driven-development` skill to implement the feature.
+**Step 1 — Read before touching.**
+Read every file you are about to change. Identify existing patterns: naming, error handling, response shapes, layering. Find at least one similar existing implementation to use as a reference.
 
-**Before writing a single line of code:**
-- Read the files you're about to change — understand what's already there
-- Identify the existing patterns (naming, error handling, response shapes, layering)
-- Find at least one similar existing implementation to use as a reference
+**Step 2 — Implement one plan step at a time.**
+Take each step from the plan (Phase 2) in order. After completing each step:
+- Run the test suite: use the test command from `devflow/config.yml`
+- If tests fail, fix them before moving to the next step
+- Do not batch multiple plan steps before running tests
 
-**While implementing:**
-- Python codebase — follow existing conventions in the project
-- Check existing files for patterns before creating new ones
+**Step 3 — Coding rules.**
+- Follow existing conventions — do not introduce new patterns without a reason
 - Prefer editing existing files over creating new ones
-- Do not add comments explaining what code does — only add comments for non-obvious WHY
+- Add comments only for non-obvious WHY — never for what the code does
 - Do not add error handling for scenarios that cannot happen
 - Do not add features beyond what the ticket requires
 - If you find yourself writing something clever, stop — write something obvious instead
-- If you find a pre-existing bug while working, note it in the PR but do not fix it unless the ticket covers it
+- If you find a pre-existing bug, note it in the PR under `## Risk` but do not fix it unless the ticket covers it
 
 ---
 
@@ -194,13 +217,19 @@ Collect all decisions made during implementation. They will be included in the P
 > - Any new business logic or functions were added
 > - Existing logic was modified (Story, Bug, or Task with code changes)
 
-Use the `superpowers:test-driven-development` skill to write tests for the implementation.
+Write tests for every piece of new logic. Follow these rules:
+- One test per behaviour — not one test per function
+- Test the contract (inputs → outputs), not the implementation details
+- Cover: happy path, edge cases, error cases (invalid input, missing resource, auth failure)
+- Name tests as `test_<what>_<when>_<expected>` (e.g. `test_create_user_with_duplicate_email_returns_409`)
+- Mirror the source structure: `app/users.py` → `tests/test_users.py`
 
 Place tests in `tests/` following the existing project structure.
 If no `tests/` directory exists, create it with a `conftest.py`.
 
-Run the tests and fix any failures before proceeding:
-```
+Run the tests and fix any failures before proceeding. Use the test command from `devflow/config.yml`.
+Default for Python/pytest:
+```bash
 python -m pytest tests/ -v
 ```
 
@@ -210,18 +239,16 @@ python -m pytest tests/ -v
 
 > ⚪ **Skip for Spike/Investigation tickets.**
 
-Use the `superpowers:requesting-code-review` skill to review the implementation from a fresh perspective.
+Run `git diff $BASE_BRANCH` (where `$BASE_BRANCH` is from `devflow/config.yml`) and review the entire diff as if you are a senior engineer who did NOT write this code. Check:
 
-Review it as if you are a senior engineer who did NOT write this code. Ask:
-- Would I understand this diff in 2 minutes with no context?
-- Is every new abstraction actually needed, or does it add indirection without value?
-- Are there any silent failures — errors that could be swallowed, states that could be corrupted?
-- Does this handle the edge cases identified in the plan?
-- Is the naming consistent with the rest of the codebase?
+- **Clarity**: would a colleague understand this diff in 2 minutes with no context?
+- **Minimal footprint**: is every new abstraction actually needed, or does it add indirection without value?
+- **Silent failures**: are there errors that could be swallowed, states that could be corrupted?
+- **Edge cases**: does this handle everything identified in the plan?
+- **Naming**: is it consistent with the rest of the codebase?
+- **Security**: no SQL string concatenation, no `eval()`, inputs validated at boundaries
 
-Apply all fixes from the self-review before proceeding.
-
-Re-run tests after fixes to confirm everything still passes.
+Apply all fixes from the self-review before proceeding. Re-run tests after fixes to confirm everything still passes.
 
 ---
 
@@ -273,6 +300,18 @@ EOF
 )"
 ```
 
+5. After the PR is created, update Jira:
+
+```bash
+# Move ticket to In Review
+jira issue move $ARGUMENTS "In Review"
+
+# Add PR link as a comment
+jira issue comment add $ARGUMENTS "PR opened: <PR_URL>"
+```
+
+If the transition fails (status name differs), skip silently and note it in the final summary.
+
 ---
 
 ## PAUSE — Await User Review
@@ -302,6 +341,7 @@ What was automated:
   <⚡ Made <N> decisions (see PR body) | — No decision points encountered>
   <✅ Written <N> unit tests — all pass | ⚪ Tests skipped (no logic changed)>
   <✅ Self code review — <N> issue(s) found and fixed | ✅ Self code review — no issues found>
+  <✅ Jira ticket moved to "In Review" + PR link added | ⚠️  Jira transition skipped: <reason>>
 
 Time saved: ~<estimate> of routine work
 

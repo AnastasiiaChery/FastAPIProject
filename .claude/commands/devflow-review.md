@@ -30,16 +30,20 @@ git checkout <headRefName>
 
 ## PHASE 2 — Fetch All Review Comments
 
-Fetch all review comments from the PR:
-
+First, resolve the repo slug dynamically:
+```bash
+REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
 ```
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
+
+Fetch all review comments from the PR:
+```bash
+gh api repos/$REPO/pulls/<PR_NUMBER>/comments \
   --jq '[.[] | {id: .id, path: .path, line: .line, body: .body, diff_hunk: .diff_hunk}]'
 ```
 
 Also fetch general PR comments (not inline):
-```
-gh api repos/{owner}/{repo}/issues/<PR_NUMBER>/comments \
+```bash
+gh api repos/$REPO/issues/<PR_NUMBER>/comments \
   --jq '[.[] | {id: .id, body: .body}]'
 ```
 
@@ -96,8 +100,8 @@ For every **Questionable** comment, log a decision before skipping it:
 ```
 
 Post each pushback as a reply to the original comment on the PR:
-```
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
+```bash
+gh api repos/$REPO/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
   -f body="<pushback explanation>"
 ```
 
@@ -107,7 +111,10 @@ After applying all fixes, re-read the full diff from top to bottom. Does it stil
 
 ## PHASE 4 — Run Tests
 
-```
+Run the test command from `devflow/config.yml` (`code.test_framework` + `code.test_dir`).
+For the default Python/pytest setup:
+
+```bash
 python -m pytest tests/ -v
 ```
 
