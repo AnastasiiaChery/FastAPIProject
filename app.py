@@ -26,7 +26,6 @@ _next_id: int = 1
 
 
 def reset_items() -> None:
-    """Reset in-memory store — used in tests."""
     global _next_id
     _items.clear()
     _next_id = 1
