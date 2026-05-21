@@ -55,6 +55,14 @@ After reviewers add comments to the PR:
 
 Claude will fetch the comments, apply fixes, run tests, and mark the PR ready to merge.
 
+After the PR is merged:
+
+```
+/devflow-cleanup TICKET-123
+```
+
+Claude will delete the feature branch and worktree.
+
 ## How it works
 
 ```
@@ -76,6 +84,11 @@ Claude will fetch the comments, apply fixes, run tests, and mark the PR ready to
     ├── gh CLI         → fetches PR comments
     ├── Claude         → applies fixes, re-runs tests
     └── gh CLI         → marks PR ready to merge
+
+/devflow-cleanup TICKET-123
+    │
+    ├── git            → removes worktree
+    └── git + gh CLI   → deletes local and remote branch
 ```
 
 ## Re-run setup

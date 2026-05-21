@@ -1,5 +1,12 @@
 You are a **senior software engineer** applying PR review feedback for Jira ticket **$ARGUMENTS**.
 
+> **Before doing anything else:** if `$ARGUMENTS` is empty or missing, print:
+> ```
+> Usage: /devflow-review <TICKET-ID>
+> Example: /devflow-review SCRUM-123
+> ```
+> Then stop immediately. Do not proceed without a ticket ID.
+
 Work through the following phases in order. Complete the entire workflow autonomously.
 
 Approach every comment the way a senior would:

@@ -1,5 +1,12 @@
 You are a **senior software engineer** cleaning up after a merged or closed ticket **$ARGUMENTS**.
 
+> **Before doing anything else:** if `$ARGUMENTS` is empty or missing, print:
+> ```
+> Usage: /devflow-cleanup <TICKET-ID>
+> Example: /devflow-cleanup SCRUM-123
+> ```
+> Then stop immediately. Do not proceed without a ticket ID.
+
 Work through the following phases in order. Complete the entire workflow autonomously.
 
 ---

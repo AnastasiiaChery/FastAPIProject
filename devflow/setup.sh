@@ -102,7 +102,7 @@ else
 fi
 
 # ── STEP 3: GitHub ─────────────────────────────────────
-step "Step 2 — GitHub authentication"
+step "Step 3 — GitHub authentication"
 echo ""
 
 if gh auth status &>/dev/null; then
@@ -225,6 +225,8 @@ echo "  Activate in current shell:"
 echo "    source $SHELL_RC"
 echo ""
 echo "  Then open Claude Code and run:"
-echo "    /devflow TICKET-123"
-echo "    /devflow-review TICKET-123"
+echo "    /devflow TICKET-123          # implement a ticket"
+echo "    /devflow-submit TICKET-123   # self-review → open draft PR"
+echo "    /devflow-review TICKET-123   # apply PR review comments"
+echo "    /devflow-cleanup TICKET-123  # clean up after merge"
 echo ""
