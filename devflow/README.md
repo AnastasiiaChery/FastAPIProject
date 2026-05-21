@@ -91,6 +91,106 @@ Claude will delete the feature branch and worktree.
     └── git + gh CLI   → deletes local and remote branch
 ```
 
+## Example run
+
+### `/devflow SCRUM-42`
+
+```
+MODE: Story
+Skipping phases: none
+
+⚡ DECISION: storage approach
+   Option A: list with linear scan → rejected (O(n) lookup/delete)
+   Option B: dict[int, Item] → chosen (O(1) lookup/delete, simpler code)
+
+============================================================
+IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
+
+Branch: feature/SCRUM-42-add-items-api
+Worktree: ../MyProject-SCRUM-42
+
+What was automated:
+  ✅ Fetched and analyzed ticket (Story, 3 SP)
+  ✅ Checked dependencies — no blockers
+  ✅ Created implementation plan (6 steps)
+  ✅ Implemented in 2 files, +89 / -0 lines
+  ⚡ Made 1 decision (see above)
+  ✅ Written 8 unit tests — all pass
+
+Time saved: ~1.5–2h of routine work
+
+Next steps:
+  1. Review the code in the worktree
+  2. When ready to create the PR, run:
+     /devflow-submit SCRUM-42
+============================================================
+```
+
+### `/devflow-submit SCRUM-42`
+
+```
+🔍 REVIEW: app/items.py:34 — variable name `d` is not descriptive
+   Fix: renamed to `item_data`
+
+============================================================
+PR CREATED — AWAITING REVIEW
+
+Draft PR: https://github.com/org/repo/pull/17
+
+What was automated:
+  ✅ Self review — 1 issue found and fixed
+  ✅ Committed and pushed branch
+  ✅ Draft PR created
+  ✅ Jira ticket moved to "In Review" + PR link added
+
+Next steps:
+  1. Share the PR link with your reviewer
+  2. When review comments arrive, run:
+     /devflow-review SCRUM-42
+============================================================
+```
+
+### `/devflow-review SCRUM-42`
+
+```
+📋 COMMENT SUMMARY (3 total)
+   Trivial:      1
+   Substantive:  1
+   Conflicting:  0
+   Questionable: 1 — will push back
+
+============================================================
+REVIEW FIXES COMPLETE
+
+PR is now ready for merge: https://github.com/org/repo/pull/17
+
+Comments processed: 3 total
+  ✅ Applied (2): renamed variable in items.py; added missing 404 test
+  ⚡ Pushed back (1): suggested removing input validation — would break AC item 3
+
+Files changed: 2 files, +12 / -3 lines
+Tests: all pass
+============================================================
+```
+
+### `/devflow-cleanup SCRUM-42`
+
+```
+============================================================
+DEVFLOW CLEANUP COMPLETE
+
+Ticket:  SCRUM-42
+Branch:  feature/SCRUM-42-add-items-api
+PR:      https://github.com/org/repo/pull/17 (merged)
+
+Cleaned up:
+  ✅ Worktree removed: ../MyProject-SCRUM-42
+  ✅ Local branch deleted
+  ✅ Remote branch deleted
+  ✅ Remote tracking refs pruned
+============================================================
+```
+
 ## Re-run setup
 
 To update credentials or switch Jira projects:
