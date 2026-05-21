@@ -1,5 +1,12 @@
 You are a **senior software engineer** preparing code for review for Jira ticket **$ARGUMENTS**.
 
+> **Before doing anything else:** if `$ARGUMENTS` is empty or missing, print:
+> ```
+> Usage: /devflow-submit <TICKET-ID>
+> Example: /devflow-submit SCRUM-123
+> ```
+> Then stop immediately. Do not proceed without a ticket ID.
+
 This command runs after `/devflow` has completed implementation and tests. It performs a self-review of the code, then commits, pushes, and opens a draft PR.
 
 Work through the following phases in order. Do not stop or ask for confirmation between phases — complete the entire workflow autonomously until you reach the PAUSE point at the end.
@@ -10,9 +17,11 @@ Work through the following phases in order. Do not stop or ask for confirmation 
 
 Read `devflow/config.yml` and extract:
 - `jira.project` — to validate the ticket prefix
-- `github.default_branch` — base branch for `git diff` and PRs
-- `code.test_framework` — the test command to re-run after fixes
 - `jira.server` — to build Jira ticket URLs
+- `jira.in_review_status` — the exact Jira status name to transition to (default: `"In Review"` if key absent)
+- `github.default_branch` — base branch for `git diff` and PRs
+- `github.draft_pr` — whether to open the PR as draft (`true`) or ready (`false`); default `true` if absent
+- `code.test_framework` — the test command to re-run after fixes
 
 Use these values in all subsequent phases instead of hardcoded defaults.
 
@@ -67,7 +76,7 @@ If no issues are found, print: `✅ Self review — no issues found`
 
 1. If self-review produced fixes, commit them:
    ```bash
-   git add -A
+   git add <list every file changed during self-review by name — do not use git add -A or git add .>
    git commit -m "fix: self-review fixes for $ARGUMENTS"
    ```
    If self-review found no issues (or was skipped), skip this step — the implementation commit from Phase 5.5 of `/devflow` is already in place.
@@ -93,10 +102,10 @@ If no issues are found, print: `✅ Self review — no issues found`
 
    **Out of scope** — include only if explicitly excluded items exist in the plan file (same path resolved above).
 
-4. Create the draft PR:
+4. Create the PR. Use `--draft` if `github.draft_pr` is `true` (or absent), omit it if `false`:
 
 ```
-gh pr create --draft \
+gh pr create [--draft if github.draft_pr is true] \
   --title "$ARGUMENTS: <ticket title>" \
   --body "$(cat <<'EOF'
 ## Jira Ticket
@@ -124,14 +133,14 @@ EOF
 5. After the PR is created, update Jira:
 
 ```bash
-# Move ticket to In Review
-jira issue move $ARGUMENTS "In Review"
+# Move ticket to the in-review status from config (jira.in_review_status)
+jira issue move $ARGUMENTS "<jira.in_review_status>"
 
 # Add PR link as a comment
 jira issue comment add $ARGUMENTS "PR opened: <PR_URL>"
 ```
 
-If the transition fails (status name differs), skip silently and note it in the final summary.
+If the transition fails (status name not found or transition rejected by Jira), do not guess an alternative status name. Set a flag `JIRA_FAILED=true` and capture the error message — it will appear in the PAUSE summary. Do not stop — the PR is already created and that is the critical outcome.
 
 ---
 
@@ -154,7 +163,7 @@ What was automated:
   <✅ Self review — <N> issue(s) found and fixed | ✅ Self review — no issues found | ⚪ Self review skipped (Spike)>
   ✅ Committed and pushed branch
   ✅ Draft PR created
-  <✅ Jira ticket moved to "In Review" + PR link added | ⚠️  Jira transition skipped: <reason>>
+  <✅ Jira ticket moved to "In Review" + PR link added | ⚠️  Jira transition failed: <error message> — move manually>
 
 Next steps:
   1. Share the PR link with your reviewer

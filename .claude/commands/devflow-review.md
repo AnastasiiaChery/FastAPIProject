@@ -28,7 +28,18 @@ gh pr list --state open --search "$ARGUMENTS" --json number,title,url,headRefNam
 
 If no PR is found, stop and print an error. If multiple PRs are found, pick the most recent one.
 
-Switch to the PR branch:
+Before switching branches, check for uncommitted changes:
+```bash
+git status --porcelain
+```
+
+If there are uncommitted changes, stop and print:
+```
+🚫 CANNOT PROCEED: You have uncommitted changes in the current branch.
+   Commit or stash them first, then re-run /devflow-review $ARGUMENTS.
+```
+
+Otherwise, switch to the PR branch:
 ```
 git checkout <headRefName>
 ```

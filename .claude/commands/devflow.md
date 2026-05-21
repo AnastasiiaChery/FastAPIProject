@@ -1,5 +1,12 @@
 You are a **senior software engineer** executing a full devflow for Jira ticket **$ARGUMENTS**.
 
+> **Before doing anything else:** if `$ARGUMENTS` is empty or missing, print:
+> ```
+> Usage: /devflow <TICKET-ID>
+> Example: /devflow SCRUM-123
+> ```
+> Then stop immediately. Do not proceed without a ticket ID.
+
 Approach every decision the way a senior would:
 - **Understand before touching.** Read existing code in the area before writing anything. Know the data flow, the conventions, the edge cases that already exist.
 - **Minimal footprint.** Change only what the ticket requires. Every extra line is a liability.
@@ -21,6 +28,8 @@ Read `devflow/config.yml` and extract:
 - `code.language` — to follow the right conventions
 - `code.test_framework` — the test command to use throughout
 - `code.test_dir` and `code.src_dir` — where tests and source live
+- `paths.plans` — where to save plan files (default: `docs/plans/` if absent)
+- `paths.investigations` — where to save Spike findings docs (default: `docs/investigations/` if absent)
 
 Use these values in all subsequent phases instead of hardcoded defaults.
 
@@ -99,9 +108,9 @@ Create a markdown plan appropriate for the mode. A good plan answers:
 - **Task**: brief description of what will change and why
 - **Spike/Investigation**: → see Phase 2a below
 
-Save to: `docs/plans/YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format).
+Save to: `<paths.plans>YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format; `paths.plans` from config, default `docs/plans/`).
 
-Run `mkdir -p docs/plans` before writing the file.
+Run `mkdir -p <paths.plans>` before writing the file.
 
 ---
 
@@ -109,7 +118,7 @@ Run `mkdir -p docs/plans` before writing the file.
 
 > ⚪ **Only for Spike/Investigation tickets. Skip otherwise.**
 
-Create a structured findings document at `docs/investigations/YYYYMMDD-$ARGUMENTS.md` with the following sections:
+Create a structured findings document at `<paths.investigations>YYYYMMDD-$ARGUMENTS.md` (`paths.investigations` from config, default `docs/investigations/`). Run `mkdir -p <paths.investigations>` before writing. with the following sections:
 
 ```markdown
 # <Ticket title>
@@ -159,15 +168,28 @@ Then continue directly to Phase 5.5 (skip Phases 3, 4, 4.5, 5).
 Create a git worktree for isolated development:
 
 ```bash
-# Derive repo name and branch slug automatically
 REPO_NAME=$(basename $(git rev-parse --show-toplevel))
 BRANCH="feature/$ARGUMENTS-<2-3 word kebab-case summary of ticket title>"
 BASE_BRANCH=<github.default_branch from config>
-
-git worktree add -b "$BRANCH" "../${REPO_NAME}-$ARGUMENTS" "$BASE_BRANCH"
+WORKTREE_PATH="../${REPO_NAME}-$ARGUMENTS"
 ```
 
-All implementation work happens inside `../${REPO_NAME}-$ARGUMENTS`. Do not work on `$BASE_BRANCH`.
+**Before creating, check if a worktree for this ticket already exists:**
+```bash
+git worktree list
+```
+- If a worktree at `$WORKTREE_PATH` already exists — print:
+  ```
+  ⚠️  Worktree already exists: $WORKTREE_PATH
+      Resuming on existing branch. If you want a fresh start, run /devflow-cleanup $ARGUMENTS first.
+  ```
+  Then switch into that worktree and continue from Phase 4 (skip branch creation).
+- If it does not exist — create it:
+  ```bash
+  git worktree add -b "$BRANCH" "$WORKTREE_PATH" "$BASE_BRANCH"
+  ```
+
+All implementation work happens inside `$WORKTREE_PATH`. Do not work on `$BASE_BRANCH`.
 
 ---
 

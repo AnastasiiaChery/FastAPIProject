@@ -8,10 +8,11 @@ devflow turns a Jira ticket into a merged PR — autonomously. A developer types
 
 ---
 
-## Three Commands, Full Lifecycle
+## Four Commands, Full Lifecycle
 
 ```bash
-/devflow SCRUM-42          # ticket → draft PR
+/devflow SCRUM-42          # ticket → implementation + tests (pauses for your review)
+/devflow-submit SCRUM-42   # self-review → commit → draft PR
 /devflow-review SCRUM-42   # review comments → ready PR
 /devflow-cleanup SCRUM-42  # merged PR → clean local state
 ```
@@ -26,9 +27,14 @@ devflow turns a Jira ticket into a merged PR — autonomously. A developer types
     ├── jira CLI        →  reads ticket, checks blocked dependencies
     ├── Claude          →  writes implementation plan
     ├── git worktree    →  creates isolated feature branch
-    ├── Claude agents   →  implements code + writes tests
+    ├── Claude          →  implements code + writes tests
+    └── PAUSE           →  you review the code
+
+/devflow-submit SCRUM-42
+    │
     ├── Claude          →  self-reviews the diff
-    └── gh CLI          →  opens draft PR  ──►  PAUSES for human review
+    ├── git + gh CLI    →  commits, pushes, opens draft PR
+    └── jira CLI        →  moves ticket to "In Review"
 
 /devflow-review SCRUM-42
     │
@@ -79,12 +85,12 @@ The pushback is posted as a reply directly on the PR comment.
 
 ### Ticket-type-aware workflow
 
-| Ticket type | Plan | Branch | Implement | Tests | Review | PR |
-|-------------|------|--------|-----------|-------|--------|----|
-| Story / Feature | ✅ implementation plan | ✅ | ✅ | ✅ | ✅ | ✅ draft |
-| Bug | ✅ root cause analysis | ✅ | ✅ | ✅ if logic changed | ✅ | ✅ draft |
-| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | ✅ | ✅ draft |
-| Spike | ✅ findings doc | ❌ | ❌ | ❌ | ❌ | ✅ with findings |
+| Ticket type | Plan | Branch | Implement | Tests | Submit |
+|-------------|------|--------|-----------|-------|--------|
+| Story / Feature | ✅ implementation plan | ✅ | ✅ | ✅ | → `/devflow-submit` |
+| Bug | ✅ root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-submit` |
+| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-submit` |
+| Spike | ✅ findings doc → `docs/investigations/` | ❌ | ❌ | ❌ | → `/devflow-submit` |
 
 ---
 
@@ -134,24 +140,46 @@ Skipping phases: none
 
 ```
 ============================================================
-DEVFLOW COMPLETE — AWAITING YOUR REVIEW
+IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
 
-Draft PR: https://github.com/org/repo/pull/87
+Branch: feature/SCRUM-42-rate-limiting
+Worktree: ../repo-SCRUM-42
 
 What was automated:
   ✅ Fetched and analyzed ticket (Story, 3 SP)
   ✅ Checked dependencies — no blockers
   ✅ Created implementation plan (5 steps)
   ✅ Implemented in 3 files, +67 / -2 lines
-  ⚡ Made 2 decisions (see PR body)
+  ⚡ Made 2 decisions (see Phase 4.5 output)
   ✅ Written 4 unit tests — all pass
-  ✅ Self code review — 1 issue found and fixed
 
-Time saved: ~2.5–3h of routine work
+Time saved: ~2–2.5h of routine work
 
 Next steps:
-  1. Open the PR and add review comments
-  2. When ready, run: /devflow-review SCRUM-42
+  1. Review the code in the worktree
+  2. When ready to create the PR, run:
+     /devflow-submit SCRUM-42
+============================================================
+```
+
+**After `/devflow-submit`:**
+
+```
+============================================================
+PR CREATED — AWAITING REVIEW
+
+Draft PR: https://github.com/org/repo/pull/87
+
+What was automated:
+  ✅ Self review — 1 issue found and fixed
+  ✅ Committed and pushed branch
+  ✅ Draft PR created
+  ✅ Jira ticket moved to "In Review" + PR link added
+
+Next steps:
+  1. Share the PR link with your reviewer
+  2. When review comments arrive, run:
+     /devflow-review SCRUM-42
 ============================================================
 ```
 
@@ -239,12 +267,15 @@ code:
 ```
 .claude/
   commands/
-    devflow.md          # /devflow — ticket → draft PR
+    devflow.md          # /devflow — ticket → implementation + tests
+    devflow-submit.md   # /devflow-submit — self-review → draft PR
     devflow-review.md   # /devflow-review — review comments → ready PR
     devflow-cleanup.md  # /devflow-cleanup — merged PR → clean state
 devflow/
   setup.sh              # one-time credential wizard
   config.yml            # project-level configuration
   README.md             # quick reference
-  DEMO.md               # demo script for presentations
+docs/
+  plans/                # implementation plans (Story, Bug, Task)
+  investigations/       # findings documents (Spike tickets)
 ```

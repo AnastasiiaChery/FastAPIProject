@@ -22,6 +22,7 @@ Commands are defined in `.claude/commands/`. Each command is self-contained — 
 - Language: Python
 - Tests: pytest in `tests/`
 - Plans: saved to `docs/plans/YYYYMMDD-TICKET-plan.md`
+- Spike findings: saved to `docs/investigations/YYYYMMDD-TICKET.md`
 - Branch naming: `feature/TICKET-ID-short-slug`
 - PRs: always draft first, never push directly to main
 - Commit messages: short, no co-author lines
