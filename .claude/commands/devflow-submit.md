@@ -102,33 +102,37 @@ If no issues are found, print: `✅ Self review — no issues found`
 
    **Out of scope** — include only if explicitly excluded items exist in the plan file (same path resolved above).
 
-4. Create the PR. Use `--draft` if `github.draft_pr` is `true` (or absent), omit it if `false`:
+4. Write the PR body to a temp file, then create the PR from it.
 
-```
-gh pr create [--draft if github.draft_pr is true] \
-  --title "$ARGUMENTS: <ticket title>" \
-  --body "$(cat <<'EOF'
-## Jira Ticket
-[$ARGUMENTS](<jira.server>/browse/$ARGUMENTS)
+   First, write `/tmp/pr-body-$ARGUMENTS.md` using the Write tool (not bash echo) with the following content — substitute all placeholders with real values before writing:
 
-## Summary
-<derived from changed files — 2-4 bullets>
+   ```markdown
+   ## Jira Ticket
+   [$ARGUMENTS](<jira.server>/browse/$ARGUMENTS)
 
-## Decisions
-<all ⚡ DECISION entries from implementation — omit section if none>
+   ## Summary
+   <derived from changed files — 2-4 bullets, each referencing a real file or function>
 
-## Risk
-<pre-existing bugs found, scope assumptions made, pattern deviations — omit section if none>
+   ## Decisions
+   <all ⚡ DECISION entries from implementation — omit this entire section if none>
 
-## Out of scope
-<items explicitly excluded in the plan — omit section if none>
+   ## Risk
+   <pre-existing bugs found, scope assumptions made, pattern deviations — omit this entire section if none>
 
-## Test plan
-- [ ] All unit tests pass
-- [ ] Acceptance criteria from ticket verified
-EOF
-)"
-```
+   ## Out of scope
+   <items explicitly excluded in the plan — omit this entire section if none>
+
+   ## Test plan
+   - [ ] All unit tests pass
+   - [ ] Acceptance criteria from ticket verified
+   ```
+
+   Then create the PR:
+   ```bash
+   gh pr create [--draft if github.draft_pr is true] \
+     --title "$ARGUMENTS: <exact ticket title from Phase 1 — do not shorten, rephrase, or paraphrase>" \
+     --body-file /tmp/pr-body-$ARGUMENTS.md
+   ```
 
 5. After the PR is created, update Jira:
 
