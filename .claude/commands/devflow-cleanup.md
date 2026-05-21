@@ -11,6 +11,18 @@ Work through the following phases in order. Complete the entire workflow autonom
 
 ---
 
+## PHASE 0 — Validate Ticket
+
+Read `devflow/config.yml` and extract `jira.project`.
+
+Extract the prefix from `$ARGUMENTS` (everything before the first `-`, e.g. `SCRUM` from `SCRUM-42`) and compare to `jira.project`. If they don't match, stop and print:
+```
+🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
+   Check devflow/config.yml or make sure you passed the right ticket ID.
+```
+
+---
+
 ## PHASE 1 — Find the PR
 
 Find the PR for ticket $ARGUMENTS (merged or closed):
@@ -52,9 +64,20 @@ Check if a worktree exists for this branch:
 git worktree list
 ```
 
-If a worktree path matches the branch, remove it:
+If a worktree path matches the branch, first check for uncommitted changes inside it:
+```bash
+git -C <worktree-path> status --porcelain
 ```
-git worktree remove <worktree-path> --force
+
+If there are uncommitted changes, stop and print:
+```
+⚠️  CANNOT REMOVE WORKTREE: <worktree-path> has uncommitted changes.
+   Review or discard them first, then re-run /devflow-cleanup $ARGUMENTS.
+```
+
+If the worktree is clean, remove it:
+```
+git worktree remove <worktree-path>
 ```
 
 If no worktree exists for this branch, skip silently.

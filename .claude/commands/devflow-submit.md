@@ -25,6 +25,15 @@ Read `devflow/config.yml` and extract:
 
 Use these values in all subsequent phases instead of hardcoded defaults.
 
+Then validate the ticket prefix:
+- Extract the prefix from `$ARGUMENTS` (everything before the first `-`, e.g. `SCRUM` from `SCRUM-42`)
+- Compare to `jira.project` from config
+- If they don't match, stop and print:
+  ```
+  🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
+     Check devflow/config.yml or make sure you passed the right ticket ID.
+  ```
+
 ---
 
 ## PHASE 1 — Locate Worktree / Branch

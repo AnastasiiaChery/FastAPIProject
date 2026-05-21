@@ -33,6 +33,15 @@ Read `devflow/config.yml` and extract:
 
 Use these values in all subsequent phases instead of hardcoded defaults.
 
+Then validate the ticket prefix:
+- Extract the prefix from `$ARGUMENTS` (everything before the first `-`, e.g. `SCRUM` from `SCRUM-42`)
+- Compare to `jira.project` from config
+- If they don't match, stop and print:
+  ```
+  🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
+     Check devflow/config.yml or make sure you passed the right ticket ID.
+  ```
+
 ---
 
 ## PHASE 1 — Fetch & Analyze the Jira Ticket
@@ -118,7 +127,16 @@ Run `mkdir -p <paths.plans>` before writing the file.
 
 > ⚪ **Only for Spike/Investigation tickets. Skip otherwise.**
 
-Create a structured findings document at `<paths.investigations>YYYYMMDD-$ARGUMENTS.md` (`paths.investigations` from config, default `docs/investigations/`). Run `mkdir -p <paths.investigations>` before writing. with the following sections:
+**Step 1 — Create spike branch.**
+
+```bash
+BASE_BRANCH=<github.default_branch from config>
+git checkout -b "spike/$ARGUMENTS" "$BASE_BRANCH"
+```
+
+**Step 2 — Create findings document.**
+
+Run `mkdir -p <paths.investigations>` before writing. Save to `<paths.investigations>YYYYMMDD-$ARGUMENTS.md`:
 
 ```markdown
 # <Ticket title>
@@ -150,14 +168,7 @@ What should be done next (if anything). Link to follow-up tickets if they exist.
 Anything that couldn't be answered in this investigation.
 ```
 
-After creating the file, create the spike branch and continue to Phase 5.5:
-
-```bash
-BASE_BRANCH=<github.default_branch from config>
-git checkout -b "spike/$ARGUMENTS" "$BASE_BRANCH"
-```
-
-Then continue directly to Phase 5.5 (skip Phases 3, 4, 4.5, 5).
+**Step 3 — Continue to Phase 5.5.** Skip Phases 3, 4, 4.5, and 5 entirely.
 
 ---
 
@@ -215,11 +226,8 @@ Take each step from the plan (Phase 2) in order. After completing each step:
 - If you find yourself writing something clever, stop — write something obvious instead
 - If you find a pre-existing bug, note it in the PR under `## Risk` but do not fix it unless the ticket covers it
 
----
-
-## PHASE 4.5 — Decision Checkpoints
-
-During implementation, whenever you encounter a meaningful decision point, print it explicitly before proceeding:
+**Step 4 — Decision checkpoints.**
+Whenever you hit a meaningful decision point during implementation, print it before proceeding:
 
 ```
 ⚡ DECISION: <what the decision is about>
@@ -227,14 +235,14 @@ During implementation, whenever you encounter a meaningful decision point, print
    Option B: <approach> → chosen (<reason>)
 ```
 
-Trigger a Decision Checkpoint when:
+Trigger a checkpoint when:
 - **Conflicting approaches exist** — two valid ways to implement something; pick one and explain why
-- **Pre-existing bug discovered** — decide: note in PR and continue, or block with explanation if it directly breaks the ticket
-- **Scope ambiguity** — ticket is unclear about edge case X; decide how to handle it and state the assumption
-- **Pattern mismatch** — existing code does it one way, a cleaner way exists; decide whether to follow convention or deviate (prefer convention unless deviation is clearly safer)
-- **Missing dependency** — something the ticket needs doesn't exist yet; decide whether to create it minimally or flag as a blocker
+- **Pre-existing bug discovered** — decide: note in PR and continue, or block if it directly breaks the ticket
+- **Scope ambiguity** — ticket is unclear about an edge case; state the assumption explicitly
+- **Pattern mismatch** — existing code does it one way, a cleaner way exists; prefer convention unless deviation is clearly safer
+- **Missing dependency** — something the ticket needs doesn't exist yet; create it minimally or flag as a blocker
 
-After each decision, **append it to the plan file** (the file created in Phase 2 — locate it with `find docs/plans -name "*-$ARGUMENTS-plan.md" | sort | tail -1`) under a `## Decisions` section so it survives into the next session:
+After each decision, **append it to the plan file** (`find docs/plans -name "*-$ARGUMENTS-plan.md" | sort | tail -1`) under a `## Decisions` section:
 
 ```markdown
 ## Decisions

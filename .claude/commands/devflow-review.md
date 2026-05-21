@@ -9,6 +9,29 @@ You are a **senior software engineer** applying PR review feedback for Jira tick
 
 Work through the following phases in order. Complete the entire workflow autonomously.
 
+---
+
+## PHASE 0 — Load Project Config
+
+Read `devflow/config.yml` and extract:
+- `jira.project` — to validate the ticket prefix
+- `github.default_branch` — base branch for `git diff`
+- `code.test_framework` — the test runner to use
+- `code.test_dir` — where tests live
+
+Use these values in all subsequent phases. Default test command if absent: `python -m pytest tests/ -v`.
+
+Then validate the ticket prefix:
+- Extract the prefix from `$ARGUMENTS` (everything before the first `-`, e.g. `SCRUM` from `SCRUM-42`)
+- Compare to `jira.project` from config
+- If they don't match, stop and print:
+  ```
+  🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
+     Check devflow/config.yml or make sure you passed the right ticket ID.
+  ```
+
+---
+
 Approach every comment the way a senior would:
 - **Understand the concern, not just the words.** A comment saying "rename this variable" is surface-level — understand why it bothers the reviewer before changing anything.
 - **Don't over-fix.** Address exactly what was asked. A 3-line comment does not justify a refactor of the surrounding function.
@@ -129,11 +152,11 @@ After applying all fixes, re-read the full diff from top to bottom. Does it stil
 
 ## PHASE 4 — Run Tests
 
-Run the test command from `devflow/config.yml` (`code.test_framework` + `code.test_dir`).
-For the default Python/pytest setup:
+Run the test command derived from `devflow/config.yml` in Phase 0.
+For Python/pytest (default):
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest <code.test_dir> -v
 ```
 
 If any tests fail:
