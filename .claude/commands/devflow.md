@@ -71,12 +71,12 @@ If no blockers exist or all are resolved, continue silently.
 
 Based on the ticket type, select the appropriate mode. **Skip phases that don't apply.**
 
-| Ticket type | Plan | Branch | Implement | Tests | Review | PR |
-|-------------|------|--------|-----------|-------|--------|----|
-| Story / Feature | ✅ as implementation plan | ✅ | ✅ | ✅ | ✅ | ✅ draft |
-| Bug | ✅ as root cause analysis | ✅ | ✅ | ✅ if logic changed | ✅ | ✅ draft |
-| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | ✅ | ✅ draft |
-| Spike / Investigation | ✅ as findings doc | ❌ no branch needed | ❌ | ❌ | ❌ | ✅ PR with findings |
+| Ticket type | Plan | Branch | Implement | Tests | Submit |
+|-------------|------|--------|-----------|-------|--------|
+| Story / Feature | ✅ as implementation plan | ✅ | ✅ | ✅ | → `/devflow-submit` |
+| Bug | ✅ as root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-submit` |
+| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-submit` |
+| Spike / Investigation | ✅ as findings doc | ❌ no branch needed | ❌ | ❌ | → `/devflow-submit` |
 
 **Print the selected mode before continuing:**
 ```
@@ -100,6 +100,8 @@ Create a markdown plan appropriate for the mode. A good plan answers:
 - **Spike/Investigation**: → see Phase 2a below
 
 Save to: `docs/plans/YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format).
+
+Run `mkdir -p docs/plans` before writing the file.
 
 ---
 
@@ -139,7 +141,14 @@ What should be done next (if anything). Link to follow-up tickets if they exist.
 Anything that couldn't be answered in this investigation.
 ```
 
-After creating the file, continue directly to Phase 7 (commit + PR).
+After creating the file, create the spike branch and continue to Phase 5.5:
+
+```bash
+BASE_BRANCH=<github.default_branch from config>
+git checkout -b "spike/$ARGUMENTS" "$BASE_BRANCH"
+```
+
+Then continue directly to Phase 5.5 (skip Phases 3, 4, 4.5, 5).
 
 ---
 
@@ -203,7 +212,14 @@ Trigger a Decision Checkpoint when:
 - **Pattern mismatch** — existing code does it one way, a cleaner way exists; decide whether to follow convention or deviate (prefer convention unless deviation is clearly safer)
 - **Missing dependency** — something the ticket needs doesn't exist yet; decide whether to create it minimally or flag as a blocker
 
-Collect all decisions made during implementation. They will be included in the PR body under a `## Decisions` section.
+After each decision, **append it to the plan file** (the file created in Phase 2 — locate it with `find docs/plans -name "*-$ARGUMENTS-plan.md" | sort | tail -1`) under a `## Decisions` section so it survives into the next session:
+
+```markdown
+## Decisions
+- **<topic>**: chose <option B> over <option A> — <reason>
+```
+
+This section is read by `/devflow-submit` to populate the PR body.
 
 ---
 
@@ -235,123 +251,57 @@ python -m pytest tests/ -v
 
 ---
 
-## PHASE 6 — Self Code Review
+## PHASE 5.5 — Commit Implementation
 
-> ⚪ **Skip for Spike/Investigation tickets.**
-
-Run `git diff $BASE_BRANCH` (where `$BASE_BRANCH` is from `devflow/config.yml`) and review the entire diff as if you are a senior engineer who did NOT write this code. Check:
-
-- **Clarity**: would a colleague understand this diff in 2 minutes with no context?
-- **Minimal footprint**: is every new abstraction actually needed, or does it add indirection without value?
-- **Silent failures**: are there errors that could be swallowed, states that could be corrupted?
-- **Edge cases**: does this handle everything identified in the plan?
-- **Naming**: is it consistent with the rest of the codebase?
-- **Security**: no SQL string concatenation, no `eval()`, inputs validated at boundaries
-
-Apply all fixes from the self-review before proceeding. Re-run tests after fixes to confirm everything still passes.
-
----
-
-## PHASE 7 — Commit and Create Draft PR
-
-1. Stage and commit all changes with a concise commit message (no co-author lines).
-2. Push the branch to origin.
-   - For Spike/Investigation: commit the findings doc to a short-lived branch named `spike/$ARGUMENTS`.
-3. Before creating the PR, build the body dynamically:
-
-   **Summary** — derive from actual changed files (`git diff --name-only`), not generic phrases:
-   - Group changes by area (e.g. "Added X to `api/`", "Updated schema in `models/`")
-   - 2-4 bullets max, each referencing a real file or function
-
-   **Decisions** — include all `⚡ DECISION` entries logged during Phase 4.5. If none, omit this section entirely.
-
-   **Risk** — include only if at least one of these is true:
-   - A pre-existing bug was found and noted
-   - A scope assumption was made (ticket was ambiguous)
-   - A pattern deviation was chosen over convention
-
-   **Out of scope** — include only if the plan (Phase 2) explicitly listed items as out of scope.
-
-4. Create the draft PR:
-
-```
-gh pr create --draft \
-  --title "$ARGUMENTS: <ticket title>" \
-  --body "$(cat <<'EOF'
-## Jira Ticket
-[$ARGUMENTS](<jira-ticket-url>)
-
-## Summary
-<derived from changed files — 2-4 bullets>
-
-## Decisions
-<all ⚡ DECISION entries from Phase 4.5 — omit section if none>
-
-## Risk
-<pre-existing bugs found, scope assumptions made, pattern deviations — omit section if none>
-
-## Out of scope
-<items explicitly excluded in the plan — omit section if none>
-
-## Test plan
-- [ ] All unit tests pass (`python -m pytest tests/ -v`)
-- [ ] Acceptance criteria from ticket verified
-EOF
-)"
-```
-
-5. After the PR is created, update Jira:
+Commit all work so changes are not lost if the session ends:
 
 ```bash
-# Move ticket to In Review
-jira issue move $ARGUMENTS "In Review"
-
-# Add PR link as a comment
-jira issue comment add $ARGUMENTS "PR opened: <PR_URL>"
+git add <list every changed file by name — do not use git add -A or git add .>
+git commit -m "<concise description of what was implemented for $ARGUMENTS>"
 ```
 
-If the transition fails (status name differs), skip silently and note it in the final summary.
+No co-author lines. Write the commit message as you would for the final PR — it will be visible in git history.
+
+> For Spike/Investigation: this commits the findings document on the `spike/$ARGUMENTS` branch created in Phase 2a.
 
 ---
 
-## PAUSE — Await User Review
+## PAUSE — Implementation Complete
 
-After creating the draft PR, collect the following metrics from what actually happened during the run:
+Collect the following metrics from what actually happened during the run:
 - Ticket type and story points (from Phase 1)
 - Whether dependencies were found and their status (from Phase 1 dependency check)
 - Number of steps in the implementation plan (from Phase 2)
-- Number of files changed and lines added/removed (`git diff --stat`)
+- Number of files changed and lines added/removed (`git diff --stat` against `$BASE_BRANCH`)
 - Number of `⚡ DECISION` entries made (from Phase 4.5)
 - Number of tests written and whether they all passed (from Phase 5)
-- Whether self code review found and fixed any issues (from Phase 6)
 
 Then print exactly this message (fill in all values from actual run data):
 
 ```
 ============================================================
-DEVFLOW COMPLETE — AWAITING YOUR REVIEW
+IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
 
-Draft PR: <PR_URL>
+Branch: <branch-name>
+Worktree: ../<repo>-$ARGUMENTS
 
 What was automated:
   ✅ Fetched and analyzed ticket (<type>, <N> SP)
   <✅ Checked dependencies — no blockers | ⚠️  Dependency noted: <TICKET-ID> is <STATUS>>
   ✅ Created implementation plan (<N> steps)
   ✅ Implemented in <N> files, +<N> / -<N> lines
-  <⚡ Made <N> decisions (see PR body) | — No decision points encountered>
+  <⚡ Made <N> decisions (see Phase 4.5 output) | — No decision points encountered>
   <✅ Written <N> unit tests — all pass | ⚪ Tests skipped (no logic changed)>
-  <✅ Self code review — <N> issue(s) found and fixed | ✅ Self code review — no issues found>
-  <✅ Jira ticket moved to "In Review" + PR link added | ⚠️  Jira transition skipped: <reason>>
 
 Time saved: ~<estimate> of routine work
 
 Next steps:
-  1. Open the PR and add review comments
-  2. When ready, run:
-     /devflow-review $ARGUMENTS
+  1. Review the code in the worktree
+  2. When ready to create the PR, run:
+     /devflow-submit $ARGUMENTS
 ============================================================
 ```
 
-For "Time saved", estimate based on: 20 min per file changed + 15 min per test written + 30 min for plan + 20 min for PR write-up. Round to nearest half-hour and express as a range (e.g. "~2–3h").
+For "Time saved", estimate based on: 20 min per file changed + 15 min per test written + 30 min for plan. Round to nearest half-hour and express as a range (e.g. "~1–2h").
 
 Then stop. Do not continue past this point.

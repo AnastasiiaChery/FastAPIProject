@@ -1,6 +1,6 @@
 # devflow
 
-Automated workflow: Jira ticket → plan → implementation → tests → code review → PR.
+Automated workflow: Jira ticket → plan → implementation → tests → **your review** → self-review → PR.
 
 ## Prerequisites
 
@@ -37,16 +37,23 @@ Claude will automatically:
 3. Create a feature branch
 4. Implement the feature in Python
 5. Write and run pytest tests
-6. Self-review the code
-7. Push a draft PR — then **pause and wait for your review**
+6. **Pause — let you review the code**
 
-After you add comments to the draft PR:
+When you're happy with the implementation:
+
+```
+/devflow-submit TICKET-123
+```
+
+Claude will self-review the code, commit, push, open a draft PR, and move the Jira ticket to "In Review".
+
+After reviewers add comments to the PR:
 
 ```
 /devflow-review TICKET-123
 ```
 
-Claude will fetch your comments, apply fixes, run tests, and mark the PR ready to merge.
+Claude will fetch the comments, apply fixes, run tests, and mark the PR ready to merge.
 
 ## How it works
 
@@ -55,13 +62,18 @@ Claude will fetch your comments, apply fixes, run tests, and mark the PR ready t
     │
     ├── jira CLI       → reads ticket requirements
     ├── git worktree   → creates isolated feature branch
-    ├── Claude agents  → implements code + tests
-    ├── self-review    → catches issues before you see them
-    └── gh CLI         → opens draft PR → PAUSES
+    ├── Claude         → implements code + tests
+    └── PAUSE          → you review the code
+
+/devflow-submit TICKET-123
+    │
+    ├── Claude         → self-reviews the diff
+    ├── git + gh CLI   → commits, pushes, opens draft PR
+    └── jira CLI       → moves ticket to "In Review"
 
 /devflow-review TICKET-123
     │
-    ├── gh CLI         → fetches your PR comments
+    ├── gh CLI         → fetches PR comments
     ├── Claude         → applies fixes, re-runs tests
     └── gh CLI         → marks PR ready to merge
 ```

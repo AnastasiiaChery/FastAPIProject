@@ -6,7 +6,8 @@ devflow automates the full developer workflow: Jira ticket → implementation pl
 
 | Command | What it does |
 |---------|-------------|
-| `/devflow TICKET-ID` | Fetches ticket, plans, implements, tests, reviews, opens draft PR |
+| `/devflow TICKET-ID` | Fetches ticket, plans, implements, tests — stops for your review |
+| `/devflow-submit TICKET-ID` | Self-reviews code, commits, pushes, opens draft PR, moves Jira to "In Review" |
 | `/devflow-review TICKET-ID` | Reads PR comments, applies fixes or pushes back, marks PR ready |
 | `/devflow-cleanup TICKET-ID` | Deletes feature branch and worktree after merge |
 
