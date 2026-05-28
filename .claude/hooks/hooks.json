@@ -1,0 +1,60 @@
+{
+  "hooks": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash .claude/hooks/guard-main-branch.sh",
+          "when": "PreToolUse",
+          "description": "Blocks any git push or git commit directly to main or protected branches. Exit 2 cancels the tool call."
+        },
+        {
+          "type": "command",
+          "command": "bash .claude/hooks/guard-git-add.sh",
+          "when": "PreToolUse",
+          "description": "Blocks git add . and git add -A. Forces explicit file listing to prevent accidental staging of secrets or unrelated files."
+        }
+      ]
+    },
+    {
+      "matcher": "Read",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash .claude/hooks/guard-env-read.sh",
+          "when": "PreToolUse",
+          "description": "Blocks reading .env files to prevent secret exposure. Claude should never access .env files containing credentials."
+        }
+      ]
+    },
+    {
+      "matcher": "Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash .claude/hooks/lint-on-write.sh",
+          "when": "PostToolUse",
+          "description": "After any .py file is written, automatically runs ruff check --fix and ruff format. Keeps code quality consistent without manual steps."
+        }
+      ]
+    },
+    {
+      "matcher": "Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash .claude/hooks/lint-on-write.sh",
+          "when": "PostToolUse",
+          "description": "After any .py file is edited, automatically runs ruff check --fix and ruff format."
+        }
+      ]
+    },
+    {
+      "type": "command",
+      "command": "bash .claude/hooks/save-session.sh",
+      "when": "Stop",
+      "description": "On session end, saves current devflow state (active ticket, branch, worktree path) to .devflow-state.json so a crashed or interrupted session can be resumed."
+    }
+  ]
+}
