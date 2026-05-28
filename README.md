@@ -8,11 +8,13 @@ devflow turns a Jira ticket into a draft PR — autonomously. A developer types 
 
 ---
 
-## Two Commands, Full Lifecycle
+## Commands
 
 ```bash
 /devflow SCRUM-42          # ticket → plan → implementation + tests (pauses for your review)
 /devflow-review SCRUM-42   # self-review → push → draft PR → Jira "In Review"
+/devflow-resume            # restore context from last saved session
+/devflow-status            # dashboard of all active worktrees, Jira statuses, and PRs
 ```
 
 ---
@@ -35,6 +37,12 @@ devflow turns a Jira ticket into a draft PR — autonomously. A developer types 
     ├── code-reviewer agent → self-reviews the diff
     ├── github skill     →  pushes branch, opens draft PR
     └── jira skill       →  moves ticket to "In Review", adds PR link
+
+/devflow-resume
+    └── reads .devflow-state.json → checks worktree + Jira + PR → prints "you are here"
+
+/devflow-status
+    └── lists all feature/* and spike/* worktrees → fetches Jira + PR status per ticket
 ```
 
 ---
@@ -58,7 +66,7 @@ devflow delegates work to purpose-built agents rather than doing everything in o
 | Hook | When | What it does |
 |------|------|-------------|
 | `guard-main-branch` | Before every `git push/commit` | Blocks direct commits to protected branches |
-| `guard-git-add` | Before every `git add` | Blocks `git add .` / `-A` — forces explicit file listing |
+| `guard-git-add` | Before every `git add` | Blocks `git add .` / `-A` and explicit staging of `.env*`, `*.pem`, `*secret*`, `*.key` |
 | `guard-env-read` | Before every file read | Blocks reading `.env` files |
 | `lint-on-write` | After every `.py` write/edit | Auto-runs `ruff check --fix` + `ruff format` |
 | `save-session` | On session stop | Saves active ticket state for resuming later |
@@ -276,6 +284,8 @@ hooks:
   commands/
     devflow.md              # /devflow — ticket → implementation + tests
     devflow-review.md       # /devflow-review — self-review → draft PR
+    devflow-resume.md       # /devflow-resume — restore context from saved session
+    devflow-status.md       # /devflow-status — dashboard of all active worktrees
   hooks/
     guard-main-branch.sh    # blocks commits to protected branches
     guard-git-add.sh        # blocks git add . / -A
