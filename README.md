@@ -2,19 +2,17 @@
 
 > **One command. Jira ticket → reviewed, ready-to-merge PR.**
 
-devflow turns a Jira ticket into a merged PR — autonomously. A developer types one command. Claude reads the ticket, writes a plan, creates a branch, implements the feature, writes tests, reviews its own code, and opens a draft PR. When the human leaves review comments, one more command applies the fixes and marks the PR ready to merge.
+devflow turns a Jira ticket into a draft PR — autonomously. A developer types one command. Claude reads the ticket, writes a plan, creates a branch, implements the feature, writes tests, reviews its own code, and opens a draft PR.
 
 **No scripts. No boilerplate. No context switching.**
 
 ---
 
-## Four Commands, Full Lifecycle
+## Two Commands, Full Lifecycle
 
 ```bash
-/devflow SCRUM-42          # ticket → implementation + tests (pauses for your review)
-/devflow-submit SCRUM-42   # self-review → commit → draft PR
-/devflow-review SCRUM-42   # review comments → ready PR
-/devflow-cleanup SCRUM-42  # merged PR → clean local state
+/devflow SCRUM-42          # ticket → plan → implementation + tests (pauses for your review)
+/devflow-review SCRUM-42   # self-review → push → draft PR → Jira "In Review"
 ```
 
 ---
@@ -24,29 +22,46 @@ devflow turns a Jira ticket into a merged PR — autonomously. A developer types
 ```
 /devflow SCRUM-42
     │
-    ├── jira CLI        →  reads ticket, checks blocked dependencies
-    ├── Claude          →  writes implementation plan
-    ├── git worktree    →  creates isolated feature branch
-    ├── Claude          →  implements code + writes tests
-    └── PAUSE           →  you review the code
-
-/devflow-submit SCRUM-42
-    │
-    ├── Claude          →  self-reviews the diff
-    ├── git + gh CLI    →  commits, pushes, opens draft PR
-    └── jira CLI        →  moves ticket to "In Review"
+    ├── jira skill       →  fetches ticket, checks blocked dependencies
+    ├── planner agent    →  writes implementation plan
+    ├── git worktree     →  creates isolated feature branch
+    ├── implementer agent →  implements code step-by-step, logs decisions
+    ├── test-writer agent →  writes pytest tests for new logic
+    ├── code-reviewer agent → self-reviews diff (BLOCKER/MAJOR/MINOR/NIT)
+    └── PAUSE            →  you review the code
 
 /devflow-review SCRUM-42
     │
-    ├── gh CLI          →  fetches your PR comments
-    ├── Claude          →  applies fixes or pushes back with explanation
-    ├── pytest          →  re-runs tests
-    └── gh CLI          →  marks PR ready to merge
+    ├── code-reviewer agent → self-reviews the diff
+    ├── github skill     →  pushes branch, opens draft PR
+    └── jira skill       →  moves ticket to "In Review", adds PR link
 ```
 
 ---
 
 ## What Makes It Smart
+
+### Specialist agents for each phase
+
+devflow delegates work to purpose-built agents rather than doing everything in one prompt:
+
+| Agent | Role |
+|-------|------|
+| `planner` | Reads the codebase, finds reference implementations, produces a concrete step-by-step plan |
+| `implementer` | Executes each step, runs tests between steps, logs `⚡ DECISION` entries |
+| `test-writer` | Writes tests that cover happy path, edge cases, and error cases — 80%+ coverage |
+| `code-reviewer` | Reviews diffs with BLOCKER / MAJOR / MINOR / NIT severity |
+| `implementation-reviewer` | Audits workflow completion metrics before PR submission |
+
+### Hooks that enforce devflow rules automatically
+
+| Hook | When | What it does |
+|------|------|-------------|
+| `guard-main-branch` | Before every `git push/commit` | Blocks direct commits to protected branches |
+| `guard-git-add` | Before every `git add` | Blocks `git add .` / `-A` — forces explicit file listing |
+| `guard-env-read` | Before every file read | Blocks reading `.env` files |
+| `lint-on-write` | After every `.py` write/edit | Auto-runs `ruff check --fix` + `ruff format` |
+| `save-session` | On session stop | Saves active ticket state for resuming later |
 
 ### Dependency checking before starting
 
@@ -70,33 +85,20 @@ During implementation, every meaningful fork in the road is logged explicitly:
 
 Decisions surface in the PR body — reviewers see not just *what* changed but *why*.
 
-### Pushback on wrong review comments
-
-When a reviewer's suggestion would make the code worse, devflow doesn't silently comply:
-
-```
-⚡ DECISION: Not applying comment by reviewer on auth.py:42
-   Comment: "use a global variable here for simplicity"
-   Reason: global state breaks concurrent request handling
-   Instead: kept the dependency-injected approach
-```
-
-The pushback is posted as a reply directly on the PR comment.
-
 ### Ticket-type-aware workflow
 
 | Ticket type | Plan | Branch | Implement | Tests | Submit |
 |-------------|------|--------|-----------|-------|--------|
-| Story / Feature | ✅ implementation plan | ✅ | ✅ | ✅ | → `/devflow-submit` |
-| Bug | ✅ root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-submit` |
-| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-submit` |
-| Spike | ✅ findings doc → `docs/investigations/` | ❌ | ❌ | ❌ | → `/devflow-submit` |
+| Story / Feature | ✅ implementation plan | ✅ | ✅ | ✅ | → `/devflow-review` |
+| Bug | ✅ root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-review` |
+| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-review` |
+| Spike | ✅ findings doc → `docs/investigations/` | ❌ | ❌ | ❌ | → `/devflow-review` |
 
 ---
 
 ## Example: Full Run Output
 
-**Console during run:**
+**Console during `/devflow`:**
 
 ```
 MODE: Story
@@ -108,10 +110,53 @@ Skipping phases: none
 ⚡ DECISION: Two approaches for rate limiting
    Option A: in-process dict with TTL → rejected (not thread-safe under uvicorn workers)
    Option B: slowapi library           → chosen (matches existing middleware pattern)
+```
 
-⚡ DECISION: Where to apply the limiter
-   Option A: per-route decorator → chosen (explicit, testable in isolation)
-   Option B: global middleware   → rejected (would throttle /health used by load balancer)
+**PAUSE summary:**
+
+```
+============================================================
+IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
+
+Branch:   feature/SCRUM-42-rate-limiting
+Worktree: ../repo-SCRUM-42
+
+What was automated:
+  ✅ Fetched ticket (Story, 3 SP)
+  ✅ No blockers
+  ✅ Implementation plan (5 steps)
+  ✅ Jira → "In Progress", assigned to you
+  ✅ Implemented 3 files, +67/-2 lines
+  ⚡ 2 decisions
+  ✅ 4 tests written — all pass
+
+Time saved: ~2–2.5h
+
+Next steps:
+  1. Review the code in the worktree
+  2. When ready to create the PR, run:
+     /devflow-review SCRUM-42
+============================================================
+```
+
+**After `/devflow-review`:**
+
+```
+============================================================
+PR CREATED — AWAITING REVIEW
+
+Draft PR: https://github.com/org/repo/pull/87
+
+What was automated:
+  ✅ Self review — no blockers found
+  ✅ Pushed branch to origin
+  ✅ Draft PR created
+  ✅ Jira → "In Review" + PR link added
+
+Next steps:
+  1. Share the PR link with your reviewer
+  2. Address review comments in this session or start a new one
+============================================================
 ```
 
 **Generated PR body:**
@@ -132,55 +177,8 @@ Skipping phases: none
   throttle the `/health` endpoint used by the load balancer.
 
 ## Test plan
-- [x] All unit tests pass (`python -m pytest tests/ -v`)
-- [x] Acceptance criteria from ticket verified
-```
-
-**Final summary:**
-
-```
-============================================================
-IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
-
-Branch: feature/SCRUM-42-rate-limiting
-Worktree: ../repo-SCRUM-42
-
-What was automated:
-  ✅ Fetched and analyzed ticket (Story, 3 SP)
-  ✅ Checked dependencies — no blockers
-  ✅ Created implementation plan (5 steps)
-  ✅ Implemented in 3 files, +67 / -2 lines
-  ⚡ Made 2 decisions (see Phase 4.5 output)
-  ✅ Written 4 unit tests — all pass
-
-Time saved: ~2–2.5h of routine work
-
-Next steps:
-  1. Review the code in the worktree
-  2. When ready to create the PR, run:
-     /devflow-submit SCRUM-42
-============================================================
-```
-
-**After `/devflow-submit`:**
-
-```
-============================================================
-PR CREATED — AWAITING REVIEW
-
-Draft PR: https://github.com/org/repo/pull/87
-
-What was automated:
-  ✅ Self review — 1 issue found and fixed
-  ✅ Committed and pushed branch
-  ✅ Draft PR created
-  ✅ Jira ticket moved to "In Review" + PR link added
-
-Next steps:
-  1. Share the PR link with your reviewer
-  2. When review comments arrive, run:
-     /devflow-review SCRUM-42
-============================================================
+- [ ] All unit tests pass
+- [ ] Acceptance criteria from ticket verified
 ```
 
 ---
@@ -198,10 +196,7 @@ Next steps:
 | Run tests + fix failures | 15 min | automated |
 | Self-review diff before pushing | 20 min | automated |
 | Write PR description | 15 min | automated |
-| Read review comments + apply fixes | 30 min | automated |
-| Re-run tests after fixes | 10 min | automated |
-| Delete branches after merge | 5 min | automated |
-| **Total routine overhead** | **~3h 25min** | **~0** |
+| **Total routine overhead** | **~2h 40min** | **~0** |
 
 ---
 
@@ -217,9 +212,8 @@ Next steps:
 | Self-reviews its own diff | ❌ | ❌ | ✅ |
 | Opens a draft PR | ❌ | ❌ | ✅ |
 | Logs reasoning at decision points | ❌ | ❌ | ✅ |
-| Reads PR comments and applies fixes | ❌ | ❌ | ✅ |
-| Pushes back on wrong review comments | ❌ | ❌ | ✅ |
-| Cleans up branches after merge | ❌ | ❌ | ✅ |
+| Enforces git safety via hooks | ❌ | ❌ | ✅ |
+| Auto-lints on every file write | ❌ | ❌ | ✅ |
 
 ---
 
@@ -250,6 +244,7 @@ The wizard configures GitHub and Jira credentials, verifies the connection, and 
 jira:
   project: SCRUM
   server: https://yourcompany.atlassian.net
+  in_review_status: "In Review"
 
 github:
   default_branch: main
@@ -258,6 +253,12 @@ github:
 code:
   language: python
   test_framework: pytest
+
+hooks:
+  enabled: true
+  lint_on_write: true
+  guard_main_branch: true
+  guard_git_add: true
 ```
 
 ---
@@ -266,16 +267,34 @@ code:
 
 ```
 .claude/
+  agents/
+    planner.md              # turns tickets into concrete plans
+    implementer.md          # executes plans step-by-step
+    test-writer.md          # writes pytest tests (80%+ coverage)
+    code-reviewer.md        # reviews diffs with BLOCKER/MAJOR/MINOR/NIT
+    implementation-reviewer.md  # audits completion before PR
   commands/
-    devflow.md          # /devflow — ticket → implementation + tests
-    devflow-submit.md   # /devflow-submit — self-review → draft PR
-    devflow-review.md   # /devflow-review — review comments → ready PR
-    devflow-cleanup.md  # /devflow-cleanup — merged PR → clean state
+    devflow.md              # /devflow — ticket → implementation + tests
+    devflow-review.md       # /devflow-review — self-review → draft PR
+  hooks/
+    guard-main-branch.sh    # blocks commits to protected branches
+    guard-git-add.sh        # blocks git add . / -A
+    guard-env-read.sh       # blocks reading .env files
+    lint-on-write.sh        # auto-lints .py files on write/edit
+    save-session.sh         # saves state on session stop
+    hooks.json              # hook configuration
+  rules/
+    python-backend.md       # Python standards (security, testing, style)
+    dockerfile.md           # Dockerfile conventions
+    yaml.md                 # YAML conventions
+  skills/
+    jira/SKILL.md           # Jira CLI operations
+    github/SKILL.md         # gh CLI operations
+    documentation/SKILL.md  # doc creation and updates
 devflow/
-  setup.sh              # one-time credential wizard
-  config.yml            # project-level configuration
-  README.md             # quick reference
+  setup.sh                  # one-time credential wizard
+  config.yml                # project-level configuration
 docs/
-  plans/                # implementation plans (Story, Bug, Task)
-  investigations/       # findings documents (Spike tickets)
+  plans/                    # implementation plans (Story, Bug, Task)
+  investigations/           # findings documents (Spike tickets)
 ```

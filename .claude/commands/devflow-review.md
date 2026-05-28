@@ -1,4 +1,4 @@
-You are a **senior software engineer** applying PR review feedback for Jira ticket **$ARGUMENTS**.
+You are a **senior software engineer** preparing code for review for Jira ticket **$ARGUMENTS**.
 
 > **Before doing anything else:** if `$ARGUMENTS` is empty or missing, print:
 > ```
@@ -7,7 +7,14 @@ You are a **senior software engineer** applying PR review feedback for Jira tick
 > ```
 > Then stop immediately. Do not proceed without a ticket ID.
 
-Work through the following phases in order. Complete the entire workflow autonomously.
+This command runs after `/devflow` has completed implementation and tests. It performs a self-review of the code, then commits, pushes, and opens a draft PR.
+
+Work through the following phases in order. Do not stop or ask for confirmation between phases — complete the entire workflow autonomously until you reach the PAUSE point at the end.
+
+**Skills and agents available:**
+- Jira operations → use the **`jira` skill** (`.claude/skills/jira/SKILL.md`)
+- GitHub operations → use the **`github` skill** (`.claude/skills/github/SKILL.md`)
+- Code review → delegate to the **`code-reviewer` agent** (`.claude/agents/code-reviewer.md`)
 
 ---
 
@@ -15,187 +22,158 @@ Work through the following phases in order. Complete the entire workflow autonom
 
 Read `devflow/config.yml` and extract:
 - `jira.project` — to validate the ticket prefix
-- `github.default_branch` — base branch for `git diff`
-- `code.test_framework` — the test runner to use
-- `code.test_dir` — where tests live
+- `jira.server` — to build Jira ticket URLs
+- `jira.in_review_status` — the exact Jira status name to transition to (default: `"In Review"` if key absent)
+- `github.default_branch` — base branch for `git diff` and PRs
+- `github.draft_pr` — whether to open the PR as draft (`true`) or ready (`false`); default `true` if absent
+- `code.test_framework` — the test command to re-run after fixes
+- `paths.plans` — where plan files are saved (default: `docs/plans/`)
 
-Use these values in all subsequent phases. Default test command if absent: `python -m pytest tests/ -v`.
+Use these values in all subsequent phases instead of hardcoded defaults.
 
-Then validate the ticket prefix:
-- Extract the prefix from `$ARGUMENTS` (everything before the first `-`, e.g. `SCRUM` from `SCRUM-42`)
-- Compare to `jira.project` from config
-- If they don't match, stop and print:
-  ```
-  🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
-     Check devflow/config.yml or make sure you passed the right ticket ID.
-  ```
-
----
-
-Approach every comment the way a senior would:
-- **Understand the concern, not just the words.** A comment saying "rename this variable" is surface-level — understand why it bothers the reviewer before changing anything.
-- **Don't over-fix.** Address exactly what was asked. A 3-line comment does not justify a refactor of the surrounding function.
-- **Don't under-fix.** If a comment points to a symptom but the root issue is deeper, fix the root — and explain in the PR why you went further.
-- **Push back when right.** If a comment is technically wrong or would make the code worse, say so clearly in a reply — don't silently apply a bad change to move fast.
-- **Re-read after fixing.** Once all comments are applied, read the full diff again as a fresh reviewer — does it still make sense as a whole?
-
----
-
-## PHASE 1 — Find the Draft PR
-
-Find the open draft PR for ticket $ARGUMENTS:
-
+Then validate the ticket prefix — extract everything before the first `-` from `$ARGUMENTS` and compare to `jira.project`. If they don't match, stop:
 ```
-gh pr list --state open --search "$ARGUMENTS" --json number,title,url,headRefName
-```
-
-If no PR is found, stop and print an error. If multiple PRs are found, pick the most recent one.
-
-Before switching branches, check for uncommitted changes:
-```bash
-git status --porcelain
-```
-
-If there are uncommitted changes, stop and print:
-```
-🚫 CANNOT PROCEED: You have uncommitted changes in the current branch.
-   Commit or stash them first, then re-run /devflow-review $ARGUMENTS.
-```
-
-Otherwise, switch to the PR branch:
-```
-git checkout <headRefName>
+🚫 WRONG PROJECT: ticket $ARGUMENTS belongs to project <prefix>, but this repo is configured for <jira.project>.
+   Check devflow/config.yml or make sure you passed the right ticket ID.
 ```
 
 ---
 
-## PHASE 2 — Fetch All Review Comments
+## PHASE 1 — Locate Worktree / Branch
 
-First, resolve the repo slug dynamically:
-```bash
-REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-```
+Determine the working branch and directory for this ticket:
 
-Fetch all review comments from the PR:
-```bash
-gh api repos/$REPO/pulls/<PR_NUMBER>/comments \
-  --jq '[.[] | {id: .id, path: .path, line: .line, body: .body, diff_hunk: .diff_hunk}]'
-```
+1. Check if the worktree `../<repo-name>-$ARGUMENTS` exists:
+   ```bash
+   git worktree list
+   ```
+2. If it exists — all subsequent commands run from that worktree path.
+3. If it does not exist — check if the current branch matches `feature/$ARGUMENTS-*` or `spike/$ARGUMENTS`. If yes, use the current directory.
+4. If neither — stop and print:
+   ```
+   🚫 CANNOT PROCEED: No worktree or feature/spike branch found for $ARGUMENTS.
+   Run /devflow $ARGUMENTS first, or check out the correct branch manually.
+   ```
 
-Also fetch general PR comments (not inline):
-```bash
-gh api repos/$REPO/issues/<PR_NUMBER>/comments \
-  --jq '[.[] | {id: .id, body: .body}]'
-```
-
-Summarize all comments before proceeding. For each comment, classify it:
-
-| Category | Criteria | Action |
-|----------|----------|--------|
-| **Trivial** | rename, typo, formatting, style | apply immediately, no explanation needed |
-| **Substantive** | logic, architecture, missing case, perf | reason through before changing |
-| **Conflicting** | two comments contradict each other | pick the more defensible option, explain in PR |
-| **Questionable** | technically wrong, or would make code worse | do NOT apply — push back with explanation |
-
-Print the classification summary before touching any code:
-
-```
-📋 COMMENT SUMMARY (<N> total)
-   Trivial:      <N>
-   Substantive:  <N>
-   Conflicting:  <N>
-   Questionable: <N> — will push back
-```
-
-If there are no comments, print:
-```
-No review comments found on PR. Nothing to fix.
-```
-Then stop.
+> For Spike/Investigation tickets the branch is `spike/$ARGUMENTS` (no worktree). Subsequent phases will detect this and skip self-review.
 
 ---
 
-## PHASE 3 — Apply Fixes
+## PHASE 2 — Self Code Review
 
-Group comments before touching any code:
-- **Trivial** (rename, typo, formatting) — apply immediately
-- **Substantive** (logic, architecture, missing case) — reason through each before changing
-- **Conflicting** — if two comments contradict each other, note it and pick the more defensible option; explain in the PR
+> ⚪ **Skip for Spike/Investigation tickets** (branch starts with `spike/`).
 
-For each comment:
-- Understand the concern before making any change
-- Make the minimal change that satisfies the comment
-- Do not refactor beyond what the comment requests
-- Do not introduce new features
-- If fixing one comment reveals a related issue nearby — fix it and mention it explicitly in the PR summary
+**Delegate to the `code-reviewer` agent** (`.claude/agents/code-reviewer.md`).
 
-If a comment is unclear, make your best interpretation and state it: _"I read this as X — applied accordingly."_
+Pass: `git diff origin/<github.default_branch>...HEAD`, ticket ID, base branch.
 
-For every **Questionable** comment, log a decision before skipping it:
+The agent classifies each finding as BLOCKER, MAJOR, MINOR, or NIT.
 
-```
-⚡ DECISION: Not applying comment by <author> on <file>:<line>
-   Comment: "<comment text>"
-   Reason: <why this change would be wrong or harmful>
-   Instead: <what was done instead, if anything>
-```
+If the agent reports any `BLOCKER` or `MAJOR` issues:
+1. Apply all required fixes
+2. Re-run the test suite (`code.test_framework` from config) to confirm everything passes
+3. Commit the fixes:
+   ```bash
+   git add <list every changed file by name — never git add . or git add -A>
+   git commit -m "fix: self-review fixes for $ARGUMENTS"
+   ```
 
-Post each pushback as a reply to the original comment on the PR:
-```bash
-gh api repos/$REPO/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
-  -f body="<pushback explanation>"
-```
-
-After applying all fixes, re-read the full diff from top to bottom. Does it still hold together as a coherent change?
+Note the result (count of BLOCKER/MAJOR issues or "no blockers") for the PAUSE summary.
 
 ---
 
-## PHASE 4 — Run Tests
+## PHASE 3 — Push & Open Draft PR
 
-Run the test command derived from `devflow/config.yml` in Phase 0.
-For Python/pytest (default):
+Use the **`github` skill** and **`jira` skill** for all operations.
+
+### Push
 
 ```bash
-python -m pytest <code.test_dir> -v
+git push -u origin HEAD
 ```
 
-If any tests fail:
-- Fix the failures before proceeding
-- Do not mark work complete with failing tests
+### Build PR body
+
+Locate the plan file:
+```bash
+find <paths.plans> -name "*-$ARGUMENTS-plan.md" | sort | tail -1
+```
+
+Write `/tmp/pr-body-$ARGUMENTS.md` with the following — substitute all placeholders with real values:
+
+**Summary** — run `git diff --name-only origin/<github.default_branch>...HEAD`, group by area:
+- 2-4 bullets max, each referencing a real file or function (not generic phrases)
+
+**Decisions** — read `## Decisions` from the plan file. Omit entire section if absent or empty.
+
+**Risk** — include only if: pre-existing bug found, scope assumption made, or pattern deviation chosen.
+
+**Out of scope** — include only if explicitly excluded items exist in the plan file.
+
+```markdown
+## Jira Ticket
+[$ARGUMENTS](<jira.server>/browse/$ARGUMENTS)
+
+## Summary
+<2-4 bullets from actual changed files — reference real files/functions>
+
+## Decisions
+<## Decisions section from plan file — omit entire section if empty or file not found>
+
+## Risk
+<pre-existing bugs, scope assumptions, pattern deviations — omit entire section if none>
+
+## Out of scope
+<explicitly excluded items from plan — omit entire section if none>
+
+## Test plan
+- [ ] All unit tests pass
+- [ ] Acceptance criteria from ticket verified
+```
+
+### Create PR
+
+```bash
+gh pr create [--draft if github.draft_pr is true] \
+  --title "$ARGUMENTS: <exact ticket title>" \
+  --body-file /tmp/pr-body-$ARGUMENTS.md
+   ```
+
+5. After the PR is created, update Jira:
+   ```bash
+   jira issue move $ARGUMENTS "<jira.in_review_status>"
+   jira issue comment add $ARGUMENTS "PR opened: <PR_URL>"
+   ```
+
+   If the transition fails — do not guess an alternative status name. Capture the error for the PAUSE summary and continue. The PR is already created and that is the critical outcome.
 
 ---
 
-## PHASE 5 — Commit and Push Fixes
+## PAUSE — Await Reviewer
 
-1. Stage changed files by name (not `git add .` — only the files you actually changed)
-2. Commit with a message in the format: `$ARGUMENTS: address review comments`
-3. Push: `git push`
+Collect the following from what actually happened:
+- Number of BLOCKER/MAJOR issues found and fixed (from Phase 2)
+- PR URL (from Phase 3)
+- Jira transition status (from Phase 3)
 
----
-
-## PHASE 6 — Mark PR Ready for Review
-
-Convert the draft PR to ready-for-review:
-
-```
-gh pr ready <PR_NUMBER>
-```
-
-Then print (fill in all values from actual run data):
+Then print exactly this message:
 
 ```
 ============================================================
-REVIEW FIXES COMPLETE
+PR CREATED — AWAITING REVIEW
 
-PR is now ready for merge: <PR_URL>
+Draft PR: <PR_URL>
 
-Comments processed: <N> total
-  ✅ Applied (<N>): <one-line description per fix>
-  ⚡ Pushed back (<N>): <comment reference + reason per pushback>
-  ⚪ Skipped (<N>): <conflicting comments resolved as — description>
+What was automated:
+  <✅ Self review — <N> BLOCKER/MAJOR issue(s) found and fixed | ✅ Self review — no blockers found | ⚪ Self review skipped (Spike)>
+  ✅ Pushed branch to origin
+  ✅ Draft PR created
+  <✅ Jira → "In Review" + PR link added | ⚠️  Jira transition failed: <error message> — move manually>
 
-Files changed: <N> files, +<N> / -<N> lines
-Tests: <all pass | <N> fixed>
+Next steps:
+  1. Share the PR link with your reviewer
+  2. Address review comments in this session or start a new one
 ============================================================
 ```
 
+Then stop. Do not continue past this point.

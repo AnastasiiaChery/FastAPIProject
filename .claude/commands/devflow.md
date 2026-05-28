@@ -18,13 +18,27 @@ Approach every decision the way a senior would:
 
 Work through the following phases in order. Do not stop or ask for confirmation between phases — complete the entire workflow autonomously until you reach the PAUSE point at the end.
 
+**Skills and agents available:**
+- Jira operations → use the **`jira` skill** (`.claude/skills/jira/SKILL.md`)
+- GitHub operations → use the **`github` skill** (`.claude/skills/github/SKILL.md`)
+- Planning → delegate to the **`planner` agent** (`.claude/agents/planner.md`)
+- Implementation → delegate to the **`implementer` agent** (`.claude/agents/implementer.md`)
+- Tests → delegate to the **`test-writer` agent** (`.claude/agents/test-writer.md`)
+- Code review → delegate to the **`code-reviewer` agent** (`.claude/agents/code-reviewer.md`)
+- Documentation → use the **`documentation` skill** (`.claude/skills/documentation/SKILL.md`)
+- Code conventions → follow rules in `.claude/rules/` (python-backend, yaml, dockerfile, frontend)
+
 ---
 
 ## PHASE 0 — Load Project Config
 
 Read `devflow/config.yml` and extract:
 - `jira.project` — to validate the ticket prefix
+- `jira.server` — to build Jira ticket URLs
+- `jira.in_progress_status` — exact Jira status name when work starts (default: `"In Progress"`)
+- `jira.in_review_status` — exact Jira status name when PR is opened (default: `"In Review"`)
 - `github.default_branch` — base branch for PRs and worktrees
+- `github.draft_pr` — whether to open the PR as draft (default: `true`)
 - `code.language` — to follow the right conventions
 - `code.test_framework` — the test command to use throughout
 - `code.test_dir` and `code.src_dir` — where tests and source live
@@ -46,7 +60,7 @@ Then validate the ticket prefix:
 
 ## PHASE 1 — Fetch & Analyze the Jira Ticket
 
-Fetch the ticket using the jira CLI:
+Use the **`jira` skill** to fetch the ticket:
 
 ```bash
 jira issue view $ARGUMENTS
@@ -91,10 +105,10 @@ Based on the ticket type, select the appropriate mode. **Skip phases that don't 
 
 | Ticket type | Plan | Branch | Implement | Tests | Submit |
 |-------------|------|--------|-----------|-------|--------|
-| Story / Feature | ✅ as implementation plan | ✅ | ✅ | ✅ | → `/devflow-submit` |
-| Bug | ✅ as root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-submit` |
-| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-submit` |
-| Spike / Investigation | ✅ as findings doc | ❌ no branch needed | ❌ | ❌ | → `/devflow-submit` |
+| Story / Feature | ✅ as implementation plan | ✅ | ✅ | ✅ | → `/devflow-review` |
+| Bug | ✅ as root cause analysis | ✅ | ✅ | ✅ if logic changed | → `/devflow-review` |
+| Task / Chore | ✅ brief | ✅ | ✅ | ⚪ only if logic changed | → `/devflow-review` |
+| Spike / Investigation | ✅ as findings doc | ❌ no branch needed | ❌ | ❌ | → `/devflow-review` |
 
 **Print the selected mode before continuing:**
 ```
@@ -106,20 +120,22 @@ Skipping phases: <list or "none">
 
 ## PHASE 2 — Create Plan
 
-Create a markdown plan appropriate for the mode. A good plan answers:
-1. What exactly will change (files, interfaces, data shapes)?
-2. Why this approach over alternatives?
-3. What can go wrong and how is it handled?
-4. What is explicitly out of scope?
+**Delegate to the `planner` agent** (`.claude/agents/planner.md`).
 
-- **Story/Feature**: full implementation plan — files to change, data flow, edge cases, test strategy
-- **Bug**: root cause analysis — trace the actual cause, not just the symptom; document why the bug exists, not just where
-- **Task**: brief description of what will change and why
-- **Spike/Investigation**: → see Phase 2a below
+Pass: ticket summary, acceptance criteria, ticket type, codebase context (language, src_dir, test_dir).
 
-Save to: `<paths.plans>YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format; `paths.plans` from config, default `docs/plans/`).
+The agent produces a structured plan. Save its output to:
+`<paths.plans>YYYYMMDD-$ARGUMENTS-plan.md` (use today's date in YYYYMMDD format; `paths.plans` from config, default `docs/plans/`).
 
 Run `mkdir -p <paths.plans>` before writing the file.
+
+Then move the ticket to in-progress and assign it:
+```bash
+jira issue move $ARGUMENTS "<jira.in_progress_status>"
+jira issue assign $ARGUMENTS $(jira me)
+```
+
+If either fails — print a warning and continue. Do not stop.
 
 ---
 
@@ -192,7 +208,7 @@ git worktree list
 - If a worktree at `$WORKTREE_PATH` already exists — print:
   ```
   ⚠️  Worktree already exists: $WORKTREE_PATH
-      Resuming on existing branch. If you want a fresh start, run /devflow-cleanup $ARGUMENTS first.
+      Resuming on existing branch.
   ```
   Then switch into that worktree and continue from Phase 4 (skip branch creation).
 - If it does not exist — create it:
@@ -208,91 +224,48 @@ All implementation work happens inside `$WORKTREE_PATH`. Do not work on `$BASE_B
 
 > ⚪ **Skip for Spike/Investigation tickets.**
 
-**Step 1 — Read before touching.**
-Read every file you are about to change. Identify existing patterns: naming, error handling, response shapes, layering. Find at least one similar existing implementation to use as a reference.
+**Delegate to the `implementer` agent** (`.claude/agents/implementer.md`).
 
-**Step 2 — Implement one plan step at a time.**
-Take each step from the plan (Phase 2) in order. After completing each step:
-- Run the test suite: use the test command from `devflow/config.yml`
-- If tests fail, fix them before moving to the next step
-- Do not batch multiple plan steps before running tests
+Pass: path to the plan file from Phase 2, worktree path, base branch, ticket ID.
 
-**Step 3 — Coding rules.**
-- Follow existing conventions — do not introduce new patterns without a reason
-- Prefer editing existing files over creating new ones
-- Add comments only for non-obvious WHY — never for what the code does
-- Do not add error handling for scenarios that cannot happen
-- Do not add features beyond what the ticket requires
-- If you find yourself writing something clever, stop — write something obvious instead
-- If you find a pre-existing bug, note it in the PR under `## Risk` but do not fix it unless the ticket covers it
-
-**Step 4 — Decision checkpoints.**
-Whenever you hit a meaningful decision point during implementation, print it before proceeding:
-
-```
-⚡ DECISION: <what the decision is about>
-   Option A: <approach> → rejected (<reason>)
-   Option B: <approach> → chosen (<reason>)
-```
-
-Trigger a checkpoint when:
-- **Conflicting approaches exist** — two valid ways to implement something; pick one and explain why
-- **Pre-existing bug discovered** — decide: note in PR and continue, or block if it directly breaks the ticket
-- **Scope ambiguity** — ticket is unclear about an edge case; state the assumption explicitly
-- **Pattern mismatch** — existing code does it one way, a cleaner way exists; prefer convention unless deviation is clearly safer
-- **Missing dependency** — something the ticket needs doesn't exist yet; create it minimally or flag as a blocker
-
-After each decision, **append it to the plan file** (`find docs/plans -name "*-$ARGUMENTS-plan.md" | sort | tail -1`) under a `## Decisions` section:
-
-```markdown
-## Decisions
-- **<topic>**: chose <option B> over <option A> — <reason>
-```
-
-This section is read by `/devflow-submit` to populate the PR body.
+The agent implements each plan step, runs tests after each step, tracks `⚡ DECISION` entries, and appends a `## Decisions` section to the plan file. Wait for its completion report.
 
 ---
 
 ## PHASE 5 — Write Unit Tests
 
-> ⚪ **Skip when:**
-> - Ticket type is Spike/Investigation
-> - Ticket type is Task/Chore and no logic was added or changed (only config, docs, infra, etc.)
->
-> **Run when:**
-> - Any new business logic or functions were added
-> - Existing logic was modified (Story, Bug, or Task with code changes)
+> ⚪ **Skip when:** Spike ticket, or Task/Chore with no logic changed.
 
-Write tests for every piece of new logic. Follow these rules:
-- One test per behaviour — not one test per function
-- Test the contract (inputs → outputs), not the implementation details
-- Cover: happy path, edge cases, error cases (invalid input, missing resource, auth failure)
-- Name tests as `test_<what>_<when>_<expected>` (e.g. `test_create_user_with_duplicate_email_returns_409`)
-- Mirror the source structure: `app/users.py` → `tests/test_users.py`
+**Delegate to the `test-writer` agent** (`.claude/agents/test-writer.md`).
 
-Place tests in `tests/` following the existing project structure.
-If no `tests/` directory exists, create it with a `conftest.py`.
+Pass: list of files changed by the implementer, plan file path, test framework from config.
 
-Run the tests and fix any failures before proceeding. Use the test command from `devflow/config.yml`.
-Default for Python/pytest:
-```bash
-python -m pytest tests/ -v
-```
+Wait for the test-writer's completion report before proceeding.
 
 ---
 
-## PHASE 5.5 — Commit Implementation
+## PHASE 5.5 — Self-Review
 
-Commit all work so changes are not lost if the session ends:
+> ⚪ **Skip for Spike tickets.**
+
+**Delegate to the `code-reviewer` agent** (`.claude/agents/code-reviewer.md`).
+
+Pass: `git diff origin/<github.default_branch>...HEAD`, ticket ID, base branch.
+
+If the agent reports any `BLOCKER` or `MAJOR` issues — fix them before continuing. Append the review summary to the plan file under `## Self-Review`.
+
+---
+
+## PHASE 6 — Commit
 
 ```bash
-git add <list every changed file by name — do not use git add -A or git add .>
+git add <list every changed file by name — never git add . or git add -A>
 git commit -m "<concise description of what was implemented for $ARGUMENTS>"
 ```
 
-No co-author lines. Write the commit message as you would for the final PR — it will be visible in git history.
+No co-author lines.
 
-> For Spike/Investigation: this commits the findings document on the `spike/$ARGUMENTS` branch created in Phase 2a.
+> For Spike: commits the findings doc on `spike/$ARGUMENTS`.
 
 ---
 
@@ -312,26 +285,27 @@ Then print exactly this message (fill in all values from actual run data):
 ============================================================
 IMPLEMENTATION COMPLETE — READY FOR YOUR REVIEW
 
-Branch: <branch-name>
+Branch:   <branch-name>
 Worktree: ../<repo>-$ARGUMENTS
 
 What was automated:
-  ✅ Fetched and analyzed ticket (<type>, <N> SP)
-  <✅ Checked dependencies — no blockers | ⚠️  Dependency noted: <TICKET-ID> is <STATUS>>
-  ✅ Created implementation plan (<N> steps)
-  ✅ Implemented in <N> files, +<N> / -<N> lines
-  <⚡ Made <N> decisions (see Phase 4.5 output) | — No decision points encountered>
-  <✅ Written <N> unit tests — all pass | ⚪ Tests skipped (no logic changed)>
+  ✅ Fetched ticket (<type>, <N> SP)
+  <✅ No blockers | ⚠️  Dependency noted: <TICKET-ID> is <STATUS>>
+  ✅ Implementation plan (<N> steps)
+  <✅ Jira → "<in_progress_status>", assigned to you | ⚠️  Jira update failed — do manually>
+  ✅ Implemented <N> files, +<N>/-<N> lines
+  <⚡ <N> decisions | — No decisions>
+  <✅ <N> tests written — all pass | ⚪ Tests skipped (no logic changed)>
 
-Time saved: ~<estimate> of routine work
+Time saved: ~<estimate>
 
 Next steps:
   1. Review the code in the worktree
   2. When ready to create the PR, run:
-     /devflow-submit $ARGUMENTS
+     /devflow-review $ARGUMENTS
 ============================================================
 ```
 
-For "Time saved", estimate based on: 20 min per file changed + 15 min per test written + 30 min for plan. Round to nearest half-hour and express as a range (e.g. "~1–2h").
+For "Time saved": 20 min/file + 15 min/test + 30 min plan. Round to nearest half-hour, express as range (e.g. "~1–1.5h").
 
 Then stop. Do not continue past this point.

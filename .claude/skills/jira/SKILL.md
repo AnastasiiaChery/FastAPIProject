@@ -1,77 +1,78 @@
 ---
 name: jira
-description: "Interact with Jira using the CLI. Use when users mention ticket IDs, ask to list/search issues, or want to view/update/comment on tickets."
+description: "Use when any Jira operation is needed: fetching ticket details, checking blocker status, transitioning ticket status, adding PR links as comments. Trigger phrases: 'fetch the ticket', 'check if blockers are done', 'move ticket to In Review', 'add PR link to Jira', 'get details for TICKET-ID'. Use the jira CLI for all operations. Do NOT use for GitHub operations — use the github skill for those."
 ---
 
 # Jira CLI Skill
 
-Use the `jira` CLI for all Jira operations. Do NOT use MCP or direct API calls.
+Use the `jira` CLI for all Jira operations. Do NOT use the Jira API directly
+or MCP unless the `jira` CLI is unavailable.
 
-## When to Use
+## Pre-flight check
 
-- User mentions a ticket ID (e.g., "PROJ-123", "look at ABC-456")
-- User asks to list, search, or find issues
-- User wants to view, update, comment, or transition a ticket
-- User asks about sprints, boards, or projects
+Before any operation, verify `jira` is authenticated:
 
-## Invocation Examples
-
-- "Show me ticket API-123" → `jira issue view API-123`
-- "What are my open tickets?" → `jira issue list -a$(jira me) -s"To Do,In Progress"`
-- "Find bugs in the API project" → `jira issue list -p API -tBug`
-- "What did I work on this week?" → `jira issue list -a$(jira me) --updated week`
-- "Add a comment to CORE-456" → `jira issue comment add CORE-456 "..."`
-
-## Natural Language → JQL Translation
-
-| User Says | Flags / JQL |
-|-----------|-------------|
-| "my tickets" | `-a$(jira me)` |
-| "my open tickets" | `-a$(jira me) -s"To Do,In Progress"` |
-| "high priority bugs" | `-tBug -yHigh` |
-| "created this week" | `--created week` |
-| "updated today" | `--updated today` |
-| "tickets with label X" | `-l X` |
-| "search for 'auth'" | `-q "summary ~ auth OR description ~ auth"` |
-
-## Common Commands
-
-| Task | Command |
-|------|---------|
-| View ticket | `jira issue view PROJ-123` |
-| View with comments | `jira issue view PROJ-123 --comments 5` |
-| My issues | `jira issue list -a$(jira me)` |
-| List with filters | `jira issue list -p PROJECT -s"In Progress" -yHigh` |
-| Raw JQL | `jira issue list -q "project = PROJ AND status != Done"` |
-| Open in browser | `jira open PROJ-123` |
-| Add comment | `jira issue comment add PROJ-123 "Comment text"` |
-| Transition | `jira issue move PROJ-123 "In Review"` |
-| Assign to self | `jira issue assign PROJ-123 $(jira me)` |
-| Current sprint | `jira sprint list --current` |
-
-## Output Formats
-
-- `--plain` - Simple text for piping/scripting
-- `--csv` - Export to CSV
-- `--raw` - Raw JSON
-
-## Tips
-
-- Use `--no-input` to skip interactive prompts when you have all info
-- Verify with `jira issue view` before editing/transitioning
-- Interactive mode: `v`=view, `m`=move, `Enter`=browser, `c`=copy URL
-
-## Troubleshooting
-
-### "invalid issue types in config" error
-
-If you get this error when creating issues, your config is missing issue types. Manually add issue types to `~/.config/.jira/.config.yml`:
-
-```yaml
-issue:
-  types:
-    - id: "10002"
-      name: Task
-      handle: task
-      subtask: false
+```bash
+jira me
 ```
+
+If not authenticated, stop and print: `Run: jira init`
+
+## Common operations
+
+### Fetch ticket details
+
+```bash
+jira issue view TICKET-ID
+```
+
+### Check if a dependency ticket is done
+
+```bash
+jira issue view TICKET-ID --plain | grep -E "^Status:"
+```
+
+Proceed only if status is `Done` or `Closed`. If blocked, stop and report:
+`⛔ BLOCKED: TICKET-ID is not Done (status: <status>). Cannot proceed.`
+
+### Transition ticket status
+
+```bash
+jira issue move TICKET-ID "STATUS"
+```
+
+Use the exact status name from `config.yml` (`jira.in_review_status`).
+Never hardcode the status string.
+
+### Add a comment (e.g. PR link)
+
+```bash
+jira issue comment add TICKET-ID \
+  --body "PR opened: <PR_URL>"
+```
+
+### List issues in project
+
+```bash
+jira issue list \
+  --project PROJECT-KEY \
+  --status "In Progress"
+```
+
+### Search with JQL
+
+```bash
+jira issue list --jql "project = SCRUM AND status = 'To Do' AND assignee = currentUser()"
+```
+
+## Ordering rule
+
+When both Jira and GitHub actions are needed in the same phase, always complete the
+GitHub action first, then transition the Jira ticket. Never transition before the PR exists.
+
+## Safety rules
+
+- Never transition a Jira ticket before the corresponding GitHub action succeeds
+- Always read the status name from `config.yml` — never hardcode it
+- Never close or archive a ticket — only move to the status defined in config
+- If `jira` is not authenticated, stop and print: `Run: jira init`
